@@ -1,7 +1,11 @@
 import json
 import os
+import warnings
 from ics import Calendar, Event
 from datetime import datetime, timedelta
+
+# --- TWEAK 3: Mute harmless library warnings ---
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 try:
     from ics.alarm import DisplayAlarm
@@ -73,7 +77,6 @@ def generate_ics(deadlines):
         date_time_string = f"{date_str} {formatted_time}"
         dt = datetime.strptime(date_time_string, "%Y-%m-%d %H:%M:%S")
         
-        # --- TWEAK 2: Timezone Fallback Warning ---
         if tz_input:
             if tz_input in TZ_MAP and ZoneInfo:
                 dt = dt.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
