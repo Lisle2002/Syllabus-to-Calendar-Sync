@@ -1,5 +1,3 @@
-# File Name: tracker.py
-
 import json
 import os
 from datetime import datetime
@@ -7,11 +5,16 @@ from datetime import datetime
 FILE_NAME = 'deadlines.json'
 
 def load_deadlines():
-    """Loads existing deadlines from the JSON file."""
-    if not os.path.exists(FILE_NAME):
+    """Loads existing deadlines, fixing broken or completely empty files automatically."""
+    if not os.path.exists(FILE_NAME) or os.stat(FILE_NAME).st_size == 0:
         return []
-    with open(FILE_NAME, 'r') as file:
-        return json.load(file)
+    
+    try:
+        with open(FILE_NAME, 'r') as file:
+            return json.load(file)
+    except json.JSONDecodeError:
+        # If the file is broken or lacks the [] brackets, return an empty list safely
+        return []
 
 def save_deadlines(deadlines):
     """Saves deadlines to the JSON file."""
@@ -27,16 +30,27 @@ def add_deadline(deadlines):
     while True:
         date_str = input("Due Date (YYYY-MM-DD): ")
         try:
-            # Validate the date format
             valid_date = datetime.strptime(date_str, "%Y-%m-%d")
             break
         except ValueError:
             print("Invalid date format! Please use YYYY-MM-DD.")
+            
+    while True:
+        time_str = input("Due Time (e.g., 11:59 PM, press Enter for 11:59 PM): ").strip().upper()
+        if not time_str:
+            time_str = "11:59 PM"
+            break
+        try:
+            datetime.strptime(time_str, "%I:%M %p")
+            break
+        except ValueError:
+            print("Invalid time format! Please use HH:MM AM/PM (e.g., 08:00 PM).")
 
     new_task = {
         "course": course,
         "task": task,
-        "due_date": date_str
+        "due_date": date_str,
+        "due_time": time_str
     }
     
     if description:
@@ -44,7 +58,7 @@ def add_deadline(deadlines):
 
     deadlines.append(new_task)
     save_deadlines(deadlines)
-    print(f"\nSuccess! Added '{task}' for {course}.")
+    print(f"\nSuccess! Added '{task}' for {course} at {time_str}.")
 
 def view_deadlines(deadlines):
     """Displays all deadlines sorted by date."""
@@ -52,18 +66,17 @@ def view_deadlines(deadlines):
         print("\nNo deadlines found! You're all caught up.")
         return
 
-    # Sort deadlines by date
     sorted_deadlines = sorted(deadlines, key=lambda x: datetime.strptime(x["due_date"], "%Y-%m-%d"))
     
     print("\n--- Upcoming Deadlines ---")
     for item in sorted_deadlines:
-        # Calculate days remaining
         due = datetime.strptime(item["due_date"], "%Y-%m-%d").date()
         today = datetime.now().date()
         days_left = (due - today).days
 
+        time_display = item.get("due_time", "11:59 PM")
         urgency = f"({days_left} days left)" if days_left >= 0 else "(OVERDUE!)"
-        print(f"[{item['due_date']}] {item['course']} - {item['task']} {urgency}")
+        print(f"[{item['due_date']} {time_display}] {item['course']} - {item['task']} {urgency}")
     print("--------------------------\n")
 
 def main():
@@ -82,10 +95,8 @@ def main():
         elif choice == '2':
             add_deadline(deadlines)
         elif choice == '3':
-            print("Good luck with your classes! Exiting...")
+            print("Exiting...")
             break
-        else:
-            print("Invalid choice, please try again.")
 
 if __name__ == "__main__":
     main()
