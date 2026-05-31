@@ -24,13 +24,18 @@ def generate_ics(deadlines):
 
     # Initialize a new Calendar
     cal = Calendar()
+    valid_count = 0
 
     for item in deadlines:
+        # --- THE FIX: Skip any item that has an empty due_date ---
+        if not item.get('due_date') or item['due_date'].strip() == "":
+            continue
+
         # Create a new Event for each deadline
         e = Event()
         
         # Format the title (e.g., "CS101 - Midterm Essay")
-        e.name = f"{item['course']} - {item['task']}"
+        e.name = f"{item.get('course', 'Unknown')} - {item.get('task', 'Task')}"
         
         # Set the date. By passing just the date string, it becomes an all-day event.
         e.begin = item['due_date']
@@ -41,12 +46,15 @@ def generate_ics(deadlines):
         
         # Add the event to the calendar
         cal.events.add(e)
+        valid_count += 1
 
     # Save the calendar data to a .ics file
-    with open(ICS_FILE, 'w') as my_file:
-        my_file.writelines(cal.serialize())
-    
-    print(f"Success! Exported {len(deadlines)} deadlines to {ICS_FILE}.")
+    if valid_count > 0:
+        with open(ICS_FILE, 'w') as my_file:
+            my_file.writelines(cal.serialize())
+        print(f"Success! Exported {valid_count} deadlines to {ICS_FILE}.")
+    else:
+        print("No valid deadlines with dates were found to export.")
 
 def main():
     print("Starting conversion...")
