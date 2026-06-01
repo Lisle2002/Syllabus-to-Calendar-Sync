@@ -20,7 +20,6 @@ def save_deadlines(deadlines):
 def add_deadline(deadlines):
     print("\n--- Add New Task ---")
     
-    # --- TWEAK 1: Prevent Blank Inputs ---
     while True:
         course = input("Project/Category Name: ").strip()
         if course: break
@@ -34,7 +33,7 @@ def add_deadline(deadlines):
     description = input("Description/Notes (optional): ").strip()
     
     while True:
-        date_str = input("Due Date (YYYY-MM-DD): ").strip()
+        date_str = input("Start Date (YYYY-MM-DD): ").strip()
         try:
             datetime.strptime(date_str, "%Y-%m-%d")
             break
@@ -42,17 +41,29 @@ def add_deadline(deadlines):
             print("Invalid date format! Please use YYYY-MM-DD.")
             
     while True:
-        time_str = input("Due Time (e.g., 08:00 PM, press Enter for 11:59 PM): ").strip().upper()
-        if not time_str:
-            time_str = "11:59 PM"
+        start_str = input("Start Time (e.g., 01:00 PM, press Enter for 11:59 PM): ").strip().upper()
+        if not start_str:
+            start_str = "11:59 PM"
             break
         try:
-            datetime.strptime(time_str, "%I:%M %p")
+            datetime.strptime(start_str, "%I:%M %p")
             break
         except ValueError:
             print("Invalid time format! Please use HH:MM AM/PM.")
 
-    tz_str = input("Timezone (e.g., EST, CST, PST. Press Enter for Local Time): ").strip().upper()
+    # --- NEW: End Time Feature ---
+    while True:
+        end_str = input("End Time (e.g., 03:00 PM, press Enter for 1 hour duration): ").strip().upper()
+        if not end_str:
+            end_str = "" # The exporter will automatically handle making this 1 hour long
+            break
+        try:
+            datetime.strptime(end_str, "%I:%M %p")
+            break
+        except ValueError:
+            print("Invalid time format! Please use HH:MM AM/PM.")
+
+    tz_str = input("Timezone (e.g., EST, EDT, CST. Press Enter for Local Time): ").strip().upper()
 
     while True:
         rem_str = input("Remind me how many minutes before? (press Enter for 30): ").strip()
@@ -63,13 +74,25 @@ def add_deadline(deadlines):
             break
         print("Please enter a valid number of minutes.")
 
+    # --- NEW: Recurring Events Feature ---
+    while True:
+        repeat_str = input("Repeat Weekly? (Enter number of weeks, e.g., 15, or press Enter for No): ").strip()
+        if not repeat_str:
+            repeat_str = "0"
+            break
+        if repeat_str.isdigit():
+            break
+        print("Please enter a valid number.")
+
     new_task = {
         "course": course,
         "task": task,
         "due_date": date_str,
-        "due_time": time_str,
+        "due_time": start_str,
+        "end_time": end_str,
         "timezone": tz_str,
-        "reminder": rem_str
+        "reminder": rem_str,
+        "repeat_weeks": repeat_str
     }
     
     if description:
@@ -77,7 +100,7 @@ def add_deadline(deadlines):
 
     deadlines.append(new_task)
     save_deadlines(deadlines)
-    print(f"\nSuccess! Added '{task}' for {course} at {time_str} {tz_str}.")
+    print(f"\nSuccess! Added '{task}' for {course}.")
 
 def view_deadlines(deadlines):
     if not deadlines:
@@ -92,12 +115,17 @@ def view_deadlines(deadlines):
         today = datetime.now().date()
         days_left = (due - today).days
 
-        time_display = item.get("due_time", "11:59 PM")
+        # Format display variables beautifully for the terminal
+        start_display = item.get("due_time", "11:59 PM")
+        end_display = item.get("end_time", "")
+        time_display = f"{start_display} - {end_display}" if end_display else start_display
+        
         tz_display = f" {item.get('timezone', '')}".rstrip()
         rem_display = f" [⏰ {item.get('reminder', '30')}m]"
+        rep_display = f" [🔁 {item.get('repeat_weeks')} weeks]" if int(item.get('repeat_weeks', '0')) > 1 else ""
 
         urgency = f"({days_left} days left)" if days_left >= 0 else "(OVERDUE!)"
-        print(f"[{item['due_date']} {time_display}{tz_display}]{rem_display} {item['course']} - {item['task']} {urgency}")
+        print(f"[{item['due_date']} | {time_display}{tz_display}]{rem_display}{rep_display} {item['course']} - {item['task']} {urgency}")
     print("--------------------------\n")
 
 def main():
