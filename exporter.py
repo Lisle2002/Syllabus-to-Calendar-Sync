@@ -11,15 +11,6 @@ try:
 except ImportError:
     DisplayAlarm = None
 
-# --- THE FIX: Correct Import Path for ics v0.8.0 ---
-try:
-    from ics.grammar.parse import ContentLine
-except ImportError:
-    try:
-        from ics import ContentLine
-    except ImportError:
-        ContentLine = None
-
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -62,9 +53,7 @@ def generate_ics(deadlines):
         if not item.get('due_date') or item['due_date'].strip() == "":
             continue
 
-        e = Event()
-        e.name = f"{item.get('course', 'Unknown')} - {item.get('task', 'Task')}"
-        
+        # Setup base times and strings
         date_str = item['due_date']
         start_time_str = item.get('due_time', '11:59 PM')
         end_time_str = item.get('end_time', '')
@@ -86,59 +75,59 @@ def generate_ics(deadlines):
         formatted_start = parsed_start.strftime("%H:%M:00")
         formatted_end = parsed_end.strftime("%H:%M:00")
         
-        dt_start = datetime.strptime(f"{date_str} {formatted_start}", "%Y-%m-%d %H:%M:%S")
-        dt_end = datetime.strptime(f"{date_str} {formatted_end}", "%Y-%m-%d %H:%M:%S")
+        base_dt_start = datetime.strptime(f"{date_str} {formatted_start}", "%Y-%m-%d %H:%M:%S")
+        base_dt_end = datetime.strptime(f"{date_str} {formatted_end}", "%Y-%m-%d %H:%M:%S")
         
-        if dt_end <= dt_start:
-            dt_end += timedelta(days=1)
-        
-        if tz_input:
-            if tz_input in TZ_MAP and ZoneInfo:
-                dt_start = dt_start.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
-                dt_end = dt_end.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
-            else:
-                print(f"Warning: Timezone '{tz_input}' not recognized. Defaulting to local time for '{e.name}'.")
-            
-        e.begin = dt_start
-        e.end = dt_end
-        
-        if 'description' in item:
-            e.description = item['description']
-            
-        if DisplayAlarm:
-            try:
-                reminder_mins = int(item.get('reminder', 30))
-                if reminder_mins > 0:
-                    alarm = DisplayAlarm(trigger=timedelta(minutes=-reminder_mins))
-                    e.alarms.append(alarm)
-            except ValueError:
-                pass
-                
-        # --- THE FIX: Bulletproof Recurring Rule Generator ---
+        if base_dt_end <= base_dt_start:
+            base_dt_end += timedelta(days=1)
+
+        # Calculate how many times to run the loop
         repeat_weeks = item.get('repeat_weeks', '0')
-        if str(repeat_weeks).isdigit() and int(repeat_weeks) > 1:
-            rrule_value = f"FREQ=WEEKLY;COUNT={repeat_weeks}"
+        loops = 1
+        if str(repeat_weeks).isdigit() and int(repeat_weeks) > 0:
+            loops = int(repeat_weeks)
+
+        # --- THE NUCLEAR FAILSAFE: Loop Unrolling ---
+        # Instead of writing 1 rule, we literally generate 'N' separate events
+        for i in range(loops):
+            e = Event()
+            e.name = f"{item.get('course', 'Unknown')} - {item.get('task', 'Task')}"
             
-            if ContentLine:
-                e.extra.append(ContentLine(name="RRULE", value=rrule_value))
-            else:
-                # Absolute failsafe if ContentLine is blocked by the library version
-                class DummyContentLine:
-                    def __init__(self, name, value):
-                        self.name = name
-                        self.value = value
-                    def serialize(self):
-                        return f"{self.name}:{self.value}\r\n"
-                e.extra.append(DummyContentLine(name="RRULE", value=rrule_value))
-        
-        cal.events.add(e)
-        valid_count += 1
+            # Add exactly 7 days for every iteration of the loop
+            current_start = base_dt_start + timedelta(weeks=i)
+            current_end = base_dt_end + timedelta(weeks=i)
+            
+            if tz_input:
+                if tz_input in TZ_MAP and ZoneInfo:
+                    current_start = current_start.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
+                    current_end = current_end.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
+                else:
+                    if i == 0: # Only print the warning on the first loop
+                        print(f"Warning: Timezone '{tz_input}' not recognized. Defaulting to local time for '{e.name}'.")
+                
+            e.begin = current_start
+            e.end = current_end
+            
+            if 'description' in item:
+                e.description = item['description']
+                
+            if DisplayAlarm:
+                try:
+                    reminder_mins = int(item.get('reminder', 30))
+                    if reminder_mins > 0:
+                        alarm = DisplayAlarm(trigger=timedelta(minutes=-reminder_mins))
+                        e.alarms.append(alarm)
+                except ValueError:
+                    pass
+            
+            cal.events.add(e)
+            valid_count += 1
 
     if valid_count > 0:
         try:
             with open(ICS_FILE, 'w') as my_file:
                 my_file.writelines(cal.serialize())
-            print(f"Success! Exported {valid_count} deadlines to {ICS_FILE}.")
+            print(f"Success! Exported {valid_count} total calendar blocks to {ICS_FILE}.")
         except PermissionError:
             print(f"\nCRITICAL ERROR: Could not save '{ICS_FILE}'.")
             print("The file is currently open in another program.")
