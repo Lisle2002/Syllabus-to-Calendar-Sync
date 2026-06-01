@@ -51,11 +51,10 @@ def add_deadline(deadlines):
         except ValueError:
             print("Invalid time format! Please use HH:MM AM/PM.")
 
-    # --- NEW: End Time Feature ---
     while True:
         end_str = input("End Time (e.g., 03:00 PM, press Enter for 1 hour duration): ").strip().upper()
         if not end_str:
-            end_str = "" # The exporter will automatically handle making this 1 hour long
+            end_str = ""
             break
         try:
             datetime.strptime(end_str, "%I:%M %p")
@@ -74,7 +73,6 @@ def add_deadline(deadlines):
             break
         print("Please enter a valid number of minutes.")
 
-    # --- NEW: Recurring Events Feature ---
     while True:
         repeat_str = input("Repeat Weekly? (Enter number of weeks, e.g., 15, or press Enter for No): ").strip()
         if not repeat_str:
@@ -115,7 +113,6 @@ def view_deadlines(deadlines):
         today = datetime.now().date()
         days_left = (due - today).days
 
-        # Format display variables beautifully for the terminal
         start_display = item.get("due_time", "11:59 PM")
         end_display = item.get("end_time", "")
         time_display = f"{start_display} - {end_display}" if end_display else start_display
@@ -128,6 +125,45 @@ def view_deadlines(deadlines):
         print(f"[{item['due_date']} | {time_display}{tz_display}]{rem_display}{rep_display} {item['course']} - {item['task']} {urgency}")
     print("--------------------------\n")
 
+# --- NEW: Delete / Complete Feature ---
+def delete_deadline(deadlines):
+    if not deadlines:
+        print("\nNo deadlines found to delete!")
+        return
+
+    # Sort them by date so they match the visual layout in 'View'
+    sorted_deadlines = sorted(deadlines, key=lambda x: datetime.strptime(x["due_date"], "%Y-%m-%d"))
+
+    print("\n--- Delete / Complete a Task ---")
+    for idx, item in enumerate(sorted_deadlines, 1):
+        start_display = item.get("due_time", "11:59 PM")
+        end_display = item.get("end_time", "")
+        time_display = f"{start_display} - {end_display}" if end_display else start_display
+        print(f"{idx}. [{item['due_date']} | {time_display}] {item['course']} - {item['task']}")
+    
+    cancel_option = len(sorted_deadlines) + 1
+    print(f"{cancel_option}. Cancel (Go back to menu)")
+
+    while True:
+        choice = input(f"\nEnter the number of the task to remove (1-{cancel_option}): ").strip()
+        if not choice:
+            continue
+        if choice.isdigit():
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(sorted_deadlines):
+                removed_item = sorted_deadlines[choice_num - 1]
+                
+                # Remove it from the original unsorted array to maintain file integrity
+                deadlines.remove(removed_item)
+                save_deadlines(deadlines)
+                
+                print(f"\nSuccess! '{removed_item['task']}' has been permanently removed.")
+                break
+            elif choice_num == cancel_option:
+                print("\nAction canceled. Returning to main menu.")
+                break
+        print(f"Invalid selection. Please enter a number between 1 and {cancel_option}.")
+
 def main():
     deadlines = load_deadlines()
     
@@ -135,19 +171,22 @@ def main():
         print("\nProject & Deadline Tracker")
         print("1. View upcoming deadlines")
         print("2. Add a new deadline")
-        print("3. Exit")
+        print("3. Delete/Complete a deadline") # Integrated choice
+        print("4. Exit")
         
-        choice = input("Choose an option (1-3): ").strip()
+        choice = input("Choose an option (1-4): ").strip()
         
         if choice == '1':
             view_deadlines(deadlines)
         elif choice == '2':
             add_deadline(deadlines)
         elif choice == '3':
+            delete_deadline(deadlines)
+        elif choice == '4':
             print("Exiting...")
             break
         else:
-            print("Invalid choice. Please select 1, 2, or 3.")
+            print("Invalid choice. Please select 1, 2, 3, or 4.")
 
 if __name__ == "__main__":
     main()
