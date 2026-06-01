@@ -4,16 +4,18 @@ import warnings
 from ics import Calendar, Event
 from datetime import datetime, timedelta
 
-# --- TWEAK 3: Mute harmless library warnings ---
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 try:
     from ics.alarm import DisplayAlarm
 except ImportError:
-    try:
-        from ics import DisplayAlarm
-    except ImportError:
-        DisplayAlarm = None
+    DisplayAlarm = None
+
+# --- NEW: Import to handle recurring rules ---
+try:
+    from ics import ContentLine
+except ImportError:
+    ContentLine = None
 
 try:
     from zoneinfo import ZoneInfo
@@ -61,29 +63,45 @@ def generate_ics(deadlines):
         e.name = f"{item.get('course', 'Unknown')} - {item.get('task', 'Task')}"
         
         date_str = item['due_date']
-        time_str = item.get('due_time', '11:59 PM')
+        start_time_str = item.get('due_time', '11:59 PM')
+        end_time_str = item.get('end_time', '')
         tz_input = item.get('timezone', '').strip().upper()
         
+        # Parse Start Time
         try:
-            parsed_time = datetime.strptime(time_str, "%I:%M %p")
-            formatted_time = parsed_time.strftime("%H:%M:00")
+            parsed_start = datetime.strptime(start_time_str, "%I:%M %p")
         except ValueError:
+            parsed_start = datetime.strptime("11:59 PM", "%I:%M %p")
+            
+        # --- NEW: Parse End Time ---
+        if end_time_str:
             try:
-                parsed_time = datetime.strptime(time_str, "%H:%M")
-                formatted_time = parsed_time.strftime("%H:%M:00")
+                parsed_end = datetime.strptime(end_time_str, "%I:%M %p")
             except ValueError:
-                formatted_time = "23:59:00"
+                parsed_end = parsed_start + timedelta(hours=1)
+        else:
+            # Default to exactly 1 hour if left blank
+            parsed_end = parsed_start + timedelta(hours=1)
+            
+        formatted_start = parsed_start.strftime("%H:%M:00")
+        formatted_end = parsed_end.strftime("%H:%M:00")
         
-        date_time_string = f"{date_str} {formatted_time}"
-        dt = datetime.strptime(date_time_string, "%Y-%m-%d %H:%M:%S")
+        dt_start = datetime.strptime(f"{date_str} {formatted_start}", "%Y-%m-%d %H:%M:%S")
+        dt_end = datetime.strptime(f"{date_str} {formatted_end}", "%Y-%m-%d %H:%M:%S")
+        
+        # Saftey check in case the event crosses midnight
+        if dt_end <= dt_start:
+            dt_end += timedelta(days=1)
         
         if tz_input:
             if tz_input in TZ_MAP and ZoneInfo:
-                dt = dt.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
+                dt_start = dt_start.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
+                dt_end = dt_end.replace(tzinfo=ZoneInfo(TZ_MAP[tz_input]))
             else:
                 print(f"Warning: Timezone '{tz_input}' not recognized. Defaulting to local time for '{e.name}'.")
             
-        e.begin = dt
+        e.begin = dt_start
+        e.end = dt_end
         
         if 'description' in item:
             e.description = item['description']
@@ -96,6 +114,13 @@ def generate_ics(deadlines):
                     e.alarms.append(alarm)
             except ValueError:
                 pass
+                
+        # --- NEW: Recurring Rule Generator ---
+        repeat_weeks = item.get('repeat_weeks', '0')
+        if repeat_weeks.isdigit() and int(repeat_weeks) > 1:
+            if ContentLine:
+                # This injects the exact standard code Google Calendar needs to repeat the event
+                e.extra.append(ContentLine(name="RRULE", value=f"FREQ=WEEKLY;COUNT={repeat_weeks}"))
         
         cal.events.add(e)
         valid_count += 1
