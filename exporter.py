@@ -11,11 +11,14 @@ try:
 except ImportError:
     DisplayAlarm = None
 
-# --- NEW: Import to handle recurring rules ---
+# --- THE FIX: Correct Import Path for ics v0.8.0 ---
 try:
-    from ics import ContentLine
+    from ics.grammar.parse import ContentLine
 except ImportError:
-    ContentLine = None
+    try:
+        from ics import ContentLine
+    except ImportError:
+        ContentLine = None
 
 try:
     from zoneinfo import ZoneInfo
@@ -67,20 +70,17 @@ def generate_ics(deadlines):
         end_time_str = item.get('end_time', '')
         tz_input = item.get('timezone', '').strip().upper()
         
-        # Parse Start Time
         try:
             parsed_start = datetime.strptime(start_time_str, "%I:%M %p")
         except ValueError:
             parsed_start = datetime.strptime("11:59 PM", "%I:%M %p")
             
-        # --- NEW: Parse End Time ---
         if end_time_str:
             try:
                 parsed_end = datetime.strptime(end_time_str, "%I:%M %p")
             except ValueError:
                 parsed_end = parsed_start + timedelta(hours=1)
         else:
-            # Default to exactly 1 hour if left blank
             parsed_end = parsed_start + timedelta(hours=1)
             
         formatted_start = parsed_start.strftime("%H:%M:00")
@@ -89,7 +89,6 @@ def generate_ics(deadlines):
         dt_start = datetime.strptime(f"{date_str} {formatted_start}", "%Y-%m-%d %H:%M:%S")
         dt_end = datetime.strptime(f"{date_str} {formatted_end}", "%Y-%m-%d %H:%M:%S")
         
-        # Saftey check in case the event crosses midnight
         if dt_end <= dt_start:
             dt_end += timedelta(days=1)
         
@@ -115,12 +114,22 @@ def generate_ics(deadlines):
             except ValueError:
                 pass
                 
-        # --- NEW: Recurring Rule Generator ---
+        # --- THE FIX: Bulletproof Recurring Rule Generator ---
         repeat_weeks = item.get('repeat_weeks', '0')
-        if repeat_weeks.isdigit() and int(repeat_weeks) > 1:
+        if str(repeat_weeks).isdigit() and int(repeat_weeks) > 1:
+            rrule_value = f"FREQ=WEEKLY;COUNT={repeat_weeks}"
+            
             if ContentLine:
-                # This injects the exact standard code Google Calendar needs to repeat the event
-                e.extra.append(ContentLine(name="RRULE", value=f"FREQ=WEEKLY;COUNT={repeat_weeks}"))
+                e.extra.append(ContentLine(name="RRULE", value=rrule_value))
+            else:
+                # Absolute failsafe if ContentLine is blocked by the library version
+                class DummyContentLine:
+                    def __init__(self, name, value):
+                        self.name = name
+                        self.value = value
+                    def serialize(self):
+                        return f"{self.name}:{self.value}\r\n"
+                e.extra.append(DummyContentLine(name="RRULE", value=rrule_value))
         
         cal.events.add(e)
         valid_count += 1
